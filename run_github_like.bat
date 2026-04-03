@@ -12,6 +12,7 @@ cd /d "%~dp0"
 set "RUN_DAILY=1"
 set "RUN_DOCKER=1"
 set "RUN_MTPROTO=0"
+set "FORCE_SPEEDTEST=1"
 
 :parse_args
 if "%~1"=="" goto :args_done
@@ -30,6 +31,11 @@ if /I "%~1"=="--mtproto" (
   shift
   goto :parse_args
 )
+if /I "%~1"=="--no-speedtest" (
+  set "FORCE_SPEEDTEST=0"
+  shift
+  goto :parse_args
+)
 if /I "%~1"=="--help" goto :help
 echo [WARNING] Неизвестный аргумент: %~1
 shift
@@ -38,7 +44,7 @@ goto :parse_args
 :args_done
 echo ==================================================
 echo   GitHub-like local pipeline
-echo   RUN_DAILY=%RUN_DAILY%  RUN_DOCKER=%RUN_DOCKER%  RUN_MTPROTO=%RUN_MTPROTO%
+echo   RUN_DAILY=%RUN_DAILY%  RUN_DOCKER=%RUN_DOCKER%  RUN_MTPROTO=%RUN_MTPROTO%  FORCE_SPEEDTEST=%FORCE_SPEEDTEST%
 echo ==================================================
 
 if not exist ".env" (
@@ -58,7 +64,7 @@ if "%RUN_DAILY%"=="1" (
   if errorlevel 1 exit /b 1
 
   echo.
-  echo [PHASE 1/3] Daily check (python)
+  echo [PHASE 1/3] Daily check ^(python^)
   %PYTHON_CMD% -m lib.vless_checker
   if errorlevel 1 (
     echo [ERROR] Daily check завершился с ошибкой.
@@ -79,18 +85,39 @@ if "%RUN_DOCKER%"=="1" (
     exit /b 1
   )
 
+  set "DOCKER_INPUT="
   if exist "configs\available" (
-    for %%I in ("configs\available") do set "SZ=%%~zI"
-  ) else (
-    set "SZ=0"
+    for %%I in ("configs\available") do if not "%%~zI"=="0" set "DOCKER_INPUT=configs\available"
+  )
+  if not defined DOCKER_INPUT (
+    if exist "configs\white-list_available" (
+      for %%I in ("configs\white-list_available") do if not "%%~zI"=="0" set "DOCKER_INPUT=configs\white-list_available"
+    )
+  )
+  if not defined DOCKER_INPUT (
+    echo [ERROR] Не найден непустой входной файл для Docker-этапа ^(configs\available или configs\white-list_available^).
+    echo [ERROR] Для эмуляции блокировок ^(iptables/CIDR^) Docker-этап запускается только через stdin.
+    exit /b 1
   )
 
-  if not "!SZ!"=="0" (
-    echo [INFO] Передаю configs\available в Docker через stdin (как в workflow).
-    type "configs\available" | docker compose run --rm -T vless-checker -
+  echo [INFO] Вход Docker-этапа: !DOCKER_INPUT!
+  if "%FORCE_SPEEDTEST%"=="1" (
+    echo [INFO] Speedtest принудительно включен для Docker-этапа ^(как в daily-check-docker^).
+    type "!DOCKER_INPUT!" | docker compose run --rm -T ^
+      -e GITHUB_ACTIONS=true ^
+      -e OUTPUT_FILE=white-list_available ^
+      -e OUTPUT_DIR=configs ^
+      -e CIDR_WHITELIST_FILE=/app/cidrlist ^
+      -e SPEED_TEST_ENABLED=true ^
+      -e SPEED_TEST_OUTPUT=separate_file ^
+      vless-checker -
   ) else (
-    echo [WARNING] configs\available пуст/отсутствует. Запуск Docker без stdin (по DEFAULT_LIST_URL/.env).
-    docker compose run --rm vless-checker
+    type "!DOCKER_INPUT!" | docker compose run --rm -T ^
+      -e GITHUB_ACTIONS=true ^
+      -e OUTPUT_FILE=white-list_available ^
+      -e OUTPUT_DIR=configs ^
+      -e CIDR_WHITELIST_FILE=/app/cidrlist ^
+      vless-checker -
   )
   if errorlevel 1 (
     echo [ERROR] Daily Docker check завершился с ошибкой.
@@ -102,7 +129,7 @@ if "%RUN_MTPROTO%"=="1" (
   call :ensure_docker
   if errorlevel 1 exit /b 1
   echo.
-  echo [PHASE 3/3] MTProto check (optional)
+  echo [PHASE 3/3] MTProto check ^(optional^)
   if exist "configs\mtproto" (
     for %%I in ("configs\mtproto") do set "MTSZ=%%~zI"
   ) else (
@@ -170,10 +197,11 @@ exit /b 0
 
 :help
 echo Usage:
-echo   run_github_like.bat [--skip-daily] [--skip-docker] [--mtproto]
+echo   run_github_like.bat [--skip-daily] [--skip-docker] [--mtproto] [--no-speedtest]
 echo.
 echo Flags:
 echo   --skip-daily   пропустить python daily check
 echo   --skip-docker  пропустить docker этап
 echo   --mtproto      добавить опциональный mtproto этап (из configs\mtproto)
+echo   --no-speedtest не включать SPEED_TEST_ENABLED=true на Docker-этапе
 exit /b 0
