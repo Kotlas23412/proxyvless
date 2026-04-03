@@ -62,6 +62,17 @@ TEST_URL = _env("TEST_URL", "http://www.google.com/generate_204")
 TEST_URLS_STR = _env("TEST_URLS", "")
 TEST_URLS_HTTPS_STR = _env("TEST_URLS_HTTPS", "")
 
+# Набор HTTPS-URL для более строгой проверки обхода блокировок в РФ
+# (Instagram/Twitter/X, YouTube, Discord и т.д.).
+DEFAULT_RU_BLOCKED_TEST_URLS_HTTPS = [
+    "https://www.instagram.com/",
+    "https://x.com/",
+    "https://twitter.com/",
+    "https://www.youtube.com/",
+    "https://discord.com/",
+    "https://www.reddit.com/",
+]
+
 # Парсинг списков URL
 def _parse_url_list(url_str: str) -> list[str]:
     """Парсит список URL из строки (запятая или точка с запятой как разделитель)."""
@@ -82,6 +93,11 @@ TEST_URLS_HTTPS = _parse_url_list(TEST_URLS_HTTPS_STR) if TEST_URLS_HTTPS_STR el
 # Если TEST_URLS не задан, используем TEST_URL как единственный URL
 if not TEST_URLS:
     TEST_URLS = [TEST_URL] if TEST_URL else []
+
+# Если HTTPS-URL явно не заданы, включаем расширенный набор для РФ.
+# Это снижает шанс ложноположительных «рабочих» прокси, которые открывают только generate_204.
+if not TEST_URLS_HTTPS:
+    TEST_URLS_HTTPS = list(DEFAULT_RU_BLOCKED_TEST_URLS_HTTPS)
 
 # Параметры проверки
 MIN_SUCCESSFUL_URLS = _env_int("MIN_SUCCESSFUL_URLS", 1)
