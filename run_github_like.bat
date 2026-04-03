@@ -65,7 +65,7 @@ if "%RUN_DAILY%"=="1" (
 
   echo.
   echo [PHASE 1/3] Daily check ^(python^)
-  %PYTHON_CMD% -m lib.vless_checker
+  !PYTHON_CMD! -m lib.vless_checker
   if errorlevel 1 (
     echo [ERROR] Daily check завершился с ошибкой.
     exit /b 1
