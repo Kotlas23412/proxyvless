@@ -252,15 +252,17 @@ jobs:
             notworkers-db-${{ github.ref_name }}-
             notworkers-db-
 
-      - name: Create links.txt from secret
+      - name: Validate links.txt from repository
         run: |
-          if [ -z "$LINKS_FILE_CONTENT" ]; then
-            echo "::error::Secret LINKS_FILE_CONTENT is not set. Add it in Settings - Secrets and variables - Actions."
+          if [ ! -f "links.txt" ]; then
+            echo "::error::links.txt not found in repository root."
             exit 1
           fi
-          printf '%s' "$LINKS_FILE_CONTENT" > links.txt
-        env:
-          LINKS_FILE_CONTENT: ${{ secrets.LINKS_FILE_CONTENT }}
+          if [ ! -s "links.txt" ]; then
+            echo "::error::links.txt is empty."
+            exit 1
+          fi
+          echo "Using links.txt from repository."
 
       - name: Backup existing available and available(top100)
         run: |
@@ -1231,4 +1233,3 @@ jobs:
 
             [Full Available List](https://whiteprime.github.io/xraycheck/configs/available)
             [Available List (top100)](https://whiteprime.github.io/xraycheck/configs/available%28top100%29)
-
