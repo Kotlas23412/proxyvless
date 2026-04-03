@@ -13,6 +13,9 @@ set "RUN_DAILY=1"
 set "RUN_DOCKER=1"
 set "RUN_MTPROTO=0"
 set "FORCE_SPEEDTEST=1"
+set "AUTO_PUSH_CONFIGS=1"
+set "CONFIGS_PUSH_BRANCH=main"
+set "CONFIGS_COMMIT_PREFIX=chore(configs): auto update from local run"
 
 :parse_args
 if "%~1"=="" goto :args_done
@@ -36,6 +39,16 @@ if /I "%~1"=="--no-speedtest" (
   shift
   goto :parse_args
 )
+if /I "%~1"=="--no-git-push" (
+  set "AUTO_PUSH_CONFIGS=0"
+  shift
+  goto :parse_args
+)
+if /I "%~1"=="--git-push" (
+  set "AUTO_PUSH_CONFIGS=1"
+  shift
+  goto :parse_args
+)
 if /I "%~1"=="--help" goto :help
 echo [WARNING] Неизвестный аргумент: %~1
 shift
@@ -44,7 +57,7 @@ goto :parse_args
 :args_done
 echo ==================================================
 echo   GitHub-like local pipeline
-echo   RUN_DAILY=%RUN_DAILY%  RUN_DOCKER=%RUN_DOCKER%  RUN_MTPROTO=%RUN_MTPROTO%  FORCE_SPEEDTEST=%FORCE_SPEEDTEST%
+echo   RUN_DAILY=%RUN_DAILY%  RUN_DOCKER=%RUN_DOCKER%  RUN_MTPROTO=%RUN_MTPROTO%  FORCE_SPEEDTEST=%FORCE_SPEEDTEST%  AUTO_PUSH_CONFIGS=%AUTO_PUSH_CONFIGS%
 echo ==================================================
 
 if not exist ".env" (
@@ -56,6 +69,10 @@ if not exist ".env" (
     exit /b 1
   )
 )
+
+call :load_env_value ".env" "AUTO_PUSH_CONFIGS" AUTO_PUSH_CONFIGS
+call :load_env_value ".env" "CONFIGS_PUSH_BRANCH" CONFIGS_PUSH_BRANCH
+call :load_env_value ".env" "CONFIGS_COMMIT_PREFIX" CONFIGS_COMMIT_PREFIX
 
 if "%RUN_DAILY%"=="1" (
   call :detect_python
@@ -149,6 +166,9 @@ if "%RUN_MTPROTO%"=="1" (
 echo.
 echo [SUCCESS] Pipeline завершен.
 echo [INFO] Проверьте файлы в папке configs\
+if "%AUTO_PUSH_CONFIGS%"=="1" (
+  call :auto_push_configs
+)
 exit /b 0
 
 :detect_python
@@ -195,13 +215,81 @@ if not exist "docker-compose.yml" (
 )
 exit /b 0
 
+:load_env_value
+setlocal
+set "FILE_PATH=%~1"
+set "KEY_NAME=%~2"
+set "VALUE="
+if not exist "%FILE_PATH%" (
+  endlocal & exit /b 0
+)
+for /f "usebackq tokens=1,* delims==" %%A in (`findstr /B /I "%KEY_NAME%=" "%FILE_PATH%"`) do (
+  set "VALUE=%%B"
+)
+if not defined VALUE (
+  endlocal & exit /b 0
+)
+if /I "%VALUE%"=="true" set "VALUE=1"
+if /I "%VALUE%"=="false" set "VALUE=0"
+endlocal & set "%~3=%VALUE%"
+exit /b 0
+
+:auto_push_configs
+echo.
+echo [PHASE git] Публикация configs\ в GitHub...
+
+where git >nul 2>&1
+if errorlevel 1 (
+  echo [WARNING] Git не найден. Авто-публикация configs\ пропущена.
+  exit /b 0
+)
+
+git rev-parse --is-inside-work-tree >nul 2>&1
+if errorlevel 1 (
+  echo [WARNING] Текущая папка не git-репозиторий. Авто-публикация пропущена.
+  exit /b 0
+)
+
+git remote get-url origin >nul 2>&1
+if errorlevel 1 (
+  echo [WARNING] remote origin не настроен. Авто-публикация пропущена.
+  exit /b 0
+)
+
+git add configs
+git diff --cached --quiet -- configs
+if not errorlevel 1 (
+  echo [INFO] Изменений в configs\ нет. Публикация не требуется.
+  exit /b 0
+)
+
+for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HH-mm-ss"') do set "NOW_TS=%%I"
+set "COMMIT_MSG=%CONFIGS_COMMIT_PREFIX% [%NOW_TS%]"
+
+git commit -m "%COMMIT_MSG%" -- configs
+if errorlevel 1 (
+  echo [WARNING] Не удалось создать commit для configs\. Проверьте git user.name/user.email.
+  exit /b 0
+)
+
+git push origin HEAD:%CONFIGS_PUSH_BRANCH%
+if errorlevel 1 (
+  echo [WARNING] Не удалось выполнить git push. Проверьте права доступа к GitHub и токен/SSH.
+  exit /b 0
+)
+
+echo [SUCCESS] configs\ успешно отправлены в GitHub ^(branch: %CONFIGS_PUSH_BRANCH%^).
+exit /b 0
+
 :help
 echo Usage:
-echo   run_github_like.bat [--skip-daily] [--skip-docker] [--mtproto] [--no-speedtest]
+echo   run_github_like.bat [--skip-daily] [--skip-docker] [--mtproto] [--no-speedtest] [--git-push] [--no-git-push]
 echo.
 echo Flags:
 echo   --skip-daily   пропустить python daily check
 echo   --skip-docker  пропустить docker этап
 echo   --mtproto      добавить опциональный mtproto этап (из configs\mtproto)
 echo   --no-speedtest не включать SPEED_TEST_ENABLED=true на Docker-этапе
+echo   --git-push     включить авто-push папки configs\ в GitHub после запуска
+echo   --no-git-push  отключить авто-push папки configs\ в GitHub после запуска
 exit /b 0
