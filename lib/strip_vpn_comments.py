@@ -4,9 +4,8 @@ from __future__ import annotations
 
 """
 Убирает комментарии (фрагмент после #) в VPN-конфигах построчно и добавляет новый:
-  # <флаг_страны><AUTO_COMMENT>
-Страна определяется по IP хоста прокси (ip-api.com).
-AUTO_COMMENT задаётся переменной окружения (см. .env и workflow).
+  # <флаг> <страна>[ | LTE]
+Страна определяется по IP хоста прокси (MMDB, затем ip-api.com как fallback).
 """
 
 import argparse
@@ -16,6 +15,7 @@ import sys
 import time
 import urllib.request
 import ipaddress
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -39,8 +39,8 @@ GEO_DELAY = 0.2  # пауза перед запросом в каждом пот
 DNS_MAX_WORKERS = 32
 GEO_MAX_WORKERS = 10
 
-DEFAULT_AUTO_COMMENT = " verified · XRayCheck"
 DEFAULT_COUNTRY_RU = "Неизвестная страна"
+DEFAULT_MMDB_PATH = os.environ.get("STRIP_VPN_COMMENTS_MMDB_PATH", "configs/dbip-country-lite.mmdb")
 
 COUNTRY_RU_BY_CODE = {
     "AM": "Армения",
@@ -85,11 +85,6 @@ STRIP_FAST = (os.environ.get("STRIP_VPN_COMMENTS_FAST") or "").strip().lower() i
 )
 # Код страны по умолчанию для быстрого режима (например, RU), пусто = глобус.
 STRIP_CC_DEFAULT = (os.environ.get("STRIP_VPN_COMMENTS_CC") or "").strip().upper()
-
-
-def get_auto_comment() -> str:
-    """Текст комментария из переменной окружения AUTO_COMMENT."""
-    return os.environ.get("AUTO_COMMENT", DEFAULT_AUTO_COMMENT).strip() or DEFAULT_AUTO_COMMENT
 
 
 def strip_comment_from_line(line: str) -> str:
@@ -156,9 +151,41 @@ def country_code_to_ru_name(cc: str) -> str:
     return COUNTRY_RU_BY_CODE.get(cc, DEFAULT_COUNTRY_RU)
 
 
-def fetch_country_for_ip(ip: str, cache: dict) -> tuple[str, str]:
+def _load_mmdb_reader(mmdb_path: str):
+    """Пытается открыть MMDB-ридер; при отсутствии зависимости/файла вернёт None."""
+    path = Path(mmdb_path)
+    if not path.is_file():
+        return None
+    try:
+        import maxminddb
+    except Exception:
+        return None
+    try:
+        return maxminddb.open_database(str(path))
+    except Exception:
+        return None
+
+
+def _fetch_country_for_ip_mmdb(ip: str, reader) -> tuple[str, str] | None:
+    if reader is None:
+        return None
+    try:
+        rec = reader.get(ip) or {}
+    except Exception:
+        return None
+    cc = ((rec.get("country") or {}).get("iso_code") or "").strip().upper()
+    if not cc:
+        return None
+    return cc, country_code_to_ru_name(cc)
+
+
+def fetch_country_for_ip(ip: str, cache: dict, mmdb_reader=None) -> tuple[str, str]:
     """Получает (countryCode, countryNameRu) для IP через ip-api.com; использует cache."""
     if ip in cache:
+        return cache[ip]
+    mmdb_result = _fetch_country_for_ip_mmdb(ip, mmdb_reader)
+    if mmdb_result:
+        cache[ip] = mmdb_result
         return cache[ip]
     time.sleep(GEO_DELAY)
     try:
@@ -239,6 +266,7 @@ def process_file(
     geo_cache: dict[str, tuple[str, str]] = {}
     host_to_ips: dict[str, list[str]] = {}
     cidr_networks = _load_cidr_networks(os.environ.get("STRIP_VPN_COMMENTS_CIDR_PATH", "cidrlist"))
+    mmdb_reader = _load_mmdb_reader(DEFAULT_MMDB_PATH)
 
     if add_comment and not STRIP_FAST:
         # 1) Разрешаем все уникальные хосты в IP параллельно
@@ -255,7 +283,7 @@ def process_file(
         unique_ips = sorted({ip for ips in host_to_ips.values() for ip in ips if ip})
 
         def _fetch_cc(ip: str) -> None:
-            fetch_country_for_ip(ip, geo_cache)
+            fetch_country_for_ip(ip, geo_cache, mmdb_reader=mmdb_reader)
 
         if unique_ips:
             with ThreadPoolExecutor(max_workers=min(GEO_MAX_WORKERS, len(unique_ips))) as executor:
@@ -272,16 +300,26 @@ def process_file(
             else:
                 ips = host_to_ips.get(host, []) if host else []
                 variants = [geo_cache.get(ip, ("", DEFAULT_COUNTRY_RU)) for ip in ips]
-                cc = next((v[0] for v in variants if v[0]), "")
-                country_ru = next((v[1] for v in variants if v[0]), DEFAULT_COUNTRY_RU)
+                cc_counter = Counter(v[0] for v in variants if v[0])
+                if cc_counter:
+                    cc = cc_counter.most_common(1)[0][0]
+                    country_ru = country_code_to_ru_name(cc)
+                else:
+                    cc = ""
+                    country_ru = DEFAULT_COUNTRY_RU
                 is_lte = _any_ip_in_cidr(ips, cidr_networks)
                 if is_lte and not cc:
                     cc = "RU"
                     country_ru = country_code_to_ru_name(cc)
             flag = country_code_to_flag(cc)
             lte_suffix = " | LTE" if is_lte else ""
-            link = f"{link}#{flag} {country_ru}{lte_suffix} {get_auto_comment().strip()}"
+            link = f"{link}#{flag} {country_ru}{lte_suffix}"
         result.append(link)
+    if mmdb_reader is not None:
+        try:
+            mmdb_reader.close()
+        except Exception:
+            pass
     out.write_text("\n".join(result) + ("\n" if result else ""), encoding="utf-8")
     print(f"Processed: {len(lines_in)} lines -> {len(result)} with new comment. Output: {out}")
     return len(result)
@@ -289,7 +327,7 @@ def process_file(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Strip comments from VPN configs and add: # <flag> verified · XRayCheck"
+        description="Strip comments from VPN configs and add: # <flag> <country>[ | LTE]"
     )
     parser.add_argument("input", help="Input file (one link per line)")
     parser.add_argument("-o", "--output", default=None, help="Output file (default: overwrite input file)")
