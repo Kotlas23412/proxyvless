@@ -216,7 +216,8 @@ def process_file(
     if not path.is_file():
         print(f"Error: file not found: {path}", file=sys.stderr)
         return 0
-    out = Path(output_path) if output_path else path.parent / (path.stem + "_new" + path.suffix)
+    # По умолчанию пишем в исходный файл, чтобы изменения были видны сразу.
+    out = Path(output_path) if output_path else path
     lines_in = path.read_text(encoding="utf-8").splitlines()
 
     # Предварительно разбираем строки в чистые ссылки и хосты
@@ -285,7 +286,7 @@ def main():
         description="Strip comments from VPN configs and add: # <flag> verified · XRayCheck"
     )
     parser.add_argument("input", help="Input file (one link per line)")
-    parser.add_argument("-o", "--output", default=None, help="Output file (default: <name>_new.<ext>)")
+    parser.add_argument("-o", "--output", default=None, help="Output file (default: overwrite input file)")
     parser.add_argument("--no-comment", action="store_true", help="Only strip comments, do not add new one")
     args = parser.parse_args()
     n = process_file(args.input, args.output, add_comment=not args.no_comment)
