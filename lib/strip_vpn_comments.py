@@ -30,7 +30,7 @@ try:
 except ImportError:
     parse_proxy_url = None
 
-GEO_API = "http://ip-api.com/json/{ip}?fields=status,country,countryCode"
+GEO_API = "http://ip-api.com/json/{ip}?fields=status,country,countryCode&lang=ru"
 GEO_TIMEOUT = 3
 GEO_DELAY = 0.2  # пауза перед запросом в каждом потоке (лимит ip-api.com ~45/мин без ключа)
 # Потоки: DNS можно поднять до 24-32; geo - не выше 10-12, иначе легко 429 от ip-api
@@ -98,12 +98,7 @@ def strip_comment_from_line(line: str) -> str:
     return line.split("#", 1)[0].strip()
 
 
-def country_code_to_flag(cc: str) -> str:
-    """Двухбуквенный код страны (ISO 3166-1 alpha-2) -> эмодзи флаг (региональные индикаторы)."""
-    if not cc or len(cc) != 2:
-        return "\U0001f310"  # globe
-    a = 0x1F1E6  # regional indicator A
-    return "".join(chr(a + ord(c) - ord("A")) for c in cc.upper() if "A" <= c <= "Z")
+@@ -71,134 +107,195 @@ def country_code_to_flag(cc: str) -> str:
 
 
 def get_host_from_link(link: str) -> str | None:
@@ -170,7 +165,7 @@ def fetch_country_for_ip(ip: str, cache: dict) -> tuple[str, str]:
                 cache[ip] = ("", DEFAULT_COUNTRY_RU)
                 return cache[ip]
             cc = (data.get("countryCode") or "").upper()
-            country_ru = country_code_to_ru_name(cc)
+            country_ru = (data.get("country") or "").strip() or country_code_to_ru_name(cc)
             cache[ip] = (cc, country_ru)
             return cache[ip]
     except Exception:
