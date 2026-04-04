@@ -241,6 +241,25 @@ run_check.bat "https://example.com/my-list.txt"
 
 > **Примечание:** Скрипт использует встроенный PowerShell для интерактивного меню. Убедитесь, что PowerShell доступен в вашей системе (обычно установлен по умолчанию в Windows 10/11).
 
+### Windows: GitHub-like pipeline + автопубликация `configs/`
+
+Для сценария "запустил на ПК → результаты сразу в GitHub" используйте `run_github_like.bat`:
+
+```cmd
+run_github_like.bat
+```
+
+После успешного завершения пайплайна скрипт:
+- проверяет изменения в папке `configs/`,
+- делает commit только для `configs/`,
+- пушит в `origin` (по умолчанию в ветку `main`).
+
+Отключение автопубликации:
+
+```cmd
+run_github_like.bat --no-git-push
+```
+
 ### Linux/macOS: bash скрипт
 
 Для Linux и macOS используйте bash скрипт `run_check.sh` с интерактивным меню:
@@ -283,6 +302,9 @@ chmod +x run_check.sh
 | `CIDR_WHITELIST_FILE` | Путь к локальному файлу CIDR (в контейнере с монтированием репозитория обычно `/app/cidrlist`); имеет приоритет над URL |
 | `SNI_FILE_URL` | URL списка доменов для whitelist SNI (workflow «Update tools»; см. комментарий в `.env.example`) |
 | `FILTER_DOCKER_CONFIGS_ENABLED` | Локальный флаг вызова `filter_docker_configs` перед Docker (в GitHub Actions задаётся в workflow, не из `.env` раннера) |
+| `AUTO_PUSH_CONFIGS` | Для `run_github_like.bat`: автокоммит+push изменений из папки `configs/` (`1/0` или `true/false`) |
+| `CONFIGS_PUSH_BRANCH` | Для `run_github_like.bat`: ветка назначения для push (по умолчанию `main`) |
+| `CONFIGS_COMMIT_PREFIX` | Для `run_github_like.bat`: префикс commit message (скрипт добавляет timestamp автоматически) |
 
 </details>
 
@@ -455,4 +477,3 @@ chmod +x run_check.sh
 | `EXPORT_DIR` | Директория для экспорта |
 
 </details>
-

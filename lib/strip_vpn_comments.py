@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 """
 Убирает комментарии (фрагмент после #) в VPN-конфигах построчно и добавляет новый:
-  # <флаг_страны><AUTO_COMMENT>
-Страна определяется по IP хоста прокси (ip-api.com).
+  # <флаг_страны> <страна_на_русском> [| LTE]<AUTO_COMMENT>
+Страна определяется по IP хоста прокси (ip-api.com, lang=ru).
+Маркер "| LTE" добавляется, если IP endpoint попадает в cidrlist.
 AUTO_COMMENT задаётся переменной окружения (см. .env и workflow).
 """
 
 import argparse
+import ipaddress
 import os
 import socket
 import sys
@@ -29,7 +31,7 @@ try:
 except ImportError:
     parse_proxy_url = None
 
-GEO_API = "http://ip-api.com/json/{ip}?fields=countryCode"
+GEO_API = "http://ip-api.com/json/{ip}?fields=country,countryCode&lang=ru"
 GEO_TIMEOUT = 3
 GEO_DELAY = 0.2  # пауза перед запросом в каждом потоке (лимит ip-api.com ~45/мин без ключа)
 # Потоки: DNS можно поднять до 24-32; geo - не выше 10-12, иначе легко 429 от ip-api
@@ -47,6 +49,26 @@ STRIP_FAST = (os.environ.get("STRIP_VPN_COMMENTS_FAST") or "").strip().lower() i
 )
 # Код страны по умолчанию для быстрого режима (например, RU), пусто = глобус.
 STRIP_CC_DEFAULT = (os.environ.get("STRIP_VPN_COMMENTS_CC") or "").strip().upper()
+STRIP_CIDR_FILE = (os.environ.get("STRIP_VPN_COMMENTS_CIDR_FILE") or "cidrlist").strip()
+
+# Минимальный fallback-словарь (для STRIP_FAST и случаев без country из API).
+COUNTRY_RU_BY_CC = {
+    "RU": "Россия",
+    "US": "США",
+    "DE": "Германия",
+    "FR": "Франция",
+    "NL": "Нидерланды",
+    "GB": "Великобритания",
+    "CA": "Канада",
+    "JP": "Япония",
+    "SG": "Сингапур",
+    "HK": "Гонконг",
+    "TR": "Турция",
+    "UA": "Украина",
+    "KZ": "Казахстан",
+    "PL": "Польша",
+    "FI": "Финляндия",
+}
 
 
 def get_auto_comment() -> str:
@@ -68,6 +90,17 @@ def country_code_to_flag(cc: str) -> str:
         return "\U0001f310"  # globe
     a = 0x1F1E6  # regional indicator A
     return "".join(chr(a + ord(c) - ord("A")) for c in cc.upper() if "A" <= c <= "Z")
+
+
+def country_name_ru(cc: str, country_from_api: str) -> str:
+    """Возвращает имя страны на русском (из API), при пустом значении - fallback по countryCode."""
+    name = (country_from_api or "").strip()
+    if name:
+        return name
+    cc_u = (cc or "").strip().upper()
+    if cc_u in COUNTRY_RU_BY_CC:
+        return COUNTRY_RU_BY_CC[cc_u]
+    return cc_u or "Неизвестно"
 
 
 def get_host_from_link(link: str) -> str | None:
@@ -105,8 +138,8 @@ def resolve_to_ip(host: str) -> str | None:
         return None
 
 
-def fetch_country_for_ip(ip: str, cache: dict) -> str:
-    """Получает countryCode для IP через ip-api.com; использует cache."""
+def fetch_country_for_ip(ip: str, cache: dict[str, tuple[str, str]]) -> tuple[str, str]:
+    """Получает (countryCode, country_ru) для IP через ip-api.com; использует cache."""
     if ip in cache:
         return cache[ip]
     time.sleep(GEO_DELAY)
@@ -115,12 +148,43 @@ def fetch_country_for_ip(ip: str, cache: dict) -> str:
         with urllib.request.urlopen(req, timeout=GEO_TIMEOUT) as r:
             import json
             data = json.loads(r.read().decode())
-            cc = data.get("countryCode") or ""
-            cache[ip] = cc
-            return cc
+            cc = (data.get("countryCode") or "").strip().upper()
+            country_ru = (data.get("country") or "").strip()
+            cache[ip] = (cc, country_ru)
+            return (cc, country_ru)
     except Exception:
-        cache[ip] = ""
-        return ""
+        cache[ip] = ("", "")
+        return ("", "")
+
+
+def load_cidr_networks(path: str) -> list:
+    """Загружает CIDR/IP из файла в список сетей."""
+    if not path or not Path(path).is_file():
+        return []
+    nets: list = []
+    for raw in Path(path).read_text(encoding="utf-8", errors="ignore").splitlines():
+        s = raw.strip()
+        if not s or s.startswith("#"):
+            continue
+        try:
+            nets.append(ipaddress.ip_network(s, strict=False))
+        except ValueError:
+            continue
+    return nets
+
+
+def is_lte_proxy(ip_text: str, cidr_networks: list) -> bool:
+    """True, если IP endpoint попадает в любую сеть cidrlist."""
+    if not ip_text or not cidr_networks:
+        return False
+    try:
+        ip_obj = ipaddress.ip_address(ip_text)
+    except ValueError:
+        return False
+    for net in cidr_networks:
+        if ip_obj.version == net.version and ip_obj in net:
+            return True
+    return False
 
 
 def process_file(
@@ -146,8 +210,9 @@ def process_file(
         links.append(link)
         hosts.append(get_host_from_link(link) if add_comment and not STRIP_FAST else None)
 
-    geo_cache: dict[str, str] = {}
+    geo_cache: dict[str, tuple[str, str]] = {}
     host_to_ip: dict[str, str] = {}
+    cidr_networks = load_cidr_networks(STRIP_CIDR_FILE)
 
     if add_comment and not STRIP_FAST:
         # 1) Разрешаем все уникальные хосты в IP параллельно
@@ -177,11 +242,16 @@ def process_file(
         if add_comment:
             if STRIP_FAST:
                 cc = STRIP_CC_DEFAULT or ""
+                country_ru = country_name_ru(cc, "")
             else:
                 ip = host_to_ip.get(host, "") if host else ""
-                cc = geo_cache.get(ip, "")
+                cc, country_ru = geo_cache.get(ip, ("", ""))
             flag = country_code_to_flag(cc)
-            link = f"{link}#{flag} {get_auto_comment().strip()}"
+            country_text = country_name_ru(cc, country_ru)
+            ip = host_to_ip.get(host, "") if (host and not STRIP_FAST) else ""
+            lte_suffix = " | LTE" if is_lte_proxy(ip, cidr_networks) else ""
+            title = f"{flag} {country_text}{lte_suffix}".strip()
+            link = f"{link}#{title}{get_auto_comment().strip()}"
         result.append(link)
     out.write_text("\n".join(result) + ("\n" if result else ""), encoding="utf-8")
     print(f"Processed: {len(lines_in)} lines -> {len(result)} with new comment. Output: {out}")
