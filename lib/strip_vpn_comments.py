@@ -100,7 +100,11 @@ def strip_comment_from_line(line: str) -> str:
     return line.split("#", 1)[0].strip()
 
 
-@@ -71,134 +107,195 @@ def country_code_to_flag(cc: str) -> str:
+def country_code_to_flag(cc: str) -> str:
+    cc = (cc or "").upper()
+    if len(cc) != 2 or not cc.isalpha():
+        return "🌐"
+    return "".join(chr(127397 + ord(ch)) for ch in cc)
 
 
 def get_host_from_link(link: str) -> str | None:
