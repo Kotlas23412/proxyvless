@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from __future__ import annotations
+
 """
 Убирает комментарии (фрагмент после #) в VPN-конфигах построчно и добавляет новый:
   # <флаг_страны><AUTO_COMMENT>
