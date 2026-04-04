@@ -165,6 +165,8 @@ if "%RUN_MTPROTO%"=="1" (
 
 echo.
 echo [SUCCESS] Pipeline завершен.
+call :normalize_proxy_comments
+if errorlevel 1 exit /b 1
 echo [INFO] Проверьте файлы в папке configs\
 if "%AUTO_PUSH_CONFIGS%"=="1" (
   call :auto_push_configs
@@ -232,6 +234,66 @@ if not defined VALUE (
 if /I "%VALUE%"=="true" set "VALUE=1"
 if /I "%VALUE%"=="false" set "VALUE=0"
 endlocal & set "%~3=%VALUE%"
+exit /b 0
+
+:normalize_proxy_comments
+echo.
+echo [PHASE normalize] Приведение комментариев прокси к формату ^"# флаг страна [^| LTE]^"
+
+if not defined PYTHON_CMD (
+  call :detect_python
+  if errorlevel 1 (
+    echo [WARNING] Python не найден, нормализация комментариев пропущена.
+    exit /b 0
+  )
+)
+
+set "NORM_TOTAL=0"
+set "NORM_UPDATED=0"
+set "NORM_SAME=0"
+set "NORM_SKIPPED=0"
+
+for %%F in (
+  "configs\available"
+  "configs\available(top100)"
+  "configs\ru"
+  "configs\ru(top100)"
+  "configs\white-list_available"
+  "configs\white-list_available(top100)"
+) do (
+  set /a NORM_TOTAL+=1
+  if not exist %%~F (
+    echo [normalize] SKIP %%~F ^- файл не найден.
+    set /a NORM_SKIPPED+=1
+  ) else (
+    for %%S in (%%~F) do (
+      if "%%~zS"=="0" (
+        echo [normalize] SKIP %%~F ^- файл пустой.
+        set /a NORM_SKIPPED+=1
+      ) else (
+        set "TMP_COPY=%TEMP%\proxyvless_norm_!RANDOM!_!RANDOM!.tmp"
+        copy /Y %%~F "!TMP_COPY!" >nul
+        !PYTHON_CMD! -m lib.strip_vpn_comments %%~F -o %%~F
+        if errorlevel 1 (
+          echo [normalize] ERROR %%~F ^- strip_vpn_comments завершился с ошибкой.
+          del /q "!TMP_COPY!" >nul 2>&1
+          exit /b 1
+        )
+        fc /b "!TMP_COPY!" %%~F >nul
+        if errorlevel 1 (
+          echo [normalize] UPDATED %%~F ^- комментарии изменены.
+          set /a NORM_UPDATED+=1
+        ) else (
+          echo [normalize] SAME %%~F ^- уже было в нужном формате, изменений нет.
+          set /a NORM_SAME+=1
+        )
+        del /q "!TMP_COPY!" >nul 2>&1
+      )
+    )
+  )
+)
+
+echo [normalize] Итого: проверено !NORM_TOTAL!, обновлено !NORM_UPDATED!, без изменений !NORM_SAME!, пропущено !NORM_SKIPPED!.
 exit /b 0
 
 :auto_push_configs
