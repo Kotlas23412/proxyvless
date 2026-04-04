@@ -1,8 +1,7 @@
-hysteria2://123456789StrongPass@144.31.224.14:443/?insecure=1&sni=www.cloudflare.com#%F0%9F%87%B3%F0%9F%87%B1%20The%20Netherlands%2C%20Amsterdam%20%7C%20%5BBL%5D
-hysteria2://123456789StrongPass@144.31.224.14:443?upmbps=10&downmbps=50&security=tls&sni=eh.@solidtrust.com&allowInsecure=true#%F0%9F%87%B3%F0%9F%87%B1%20The%20Netherlands%2C%20Amsterdam%20%7C%20%5BBL%5D
-hysteria2://123456789StrongPass@144.31.224.14:443?security=tls&allowInsecure=true#%F0%9F%87%B3%F0%9F%87%B1%20The%20Netherlands%2C%20Amsterdam%20%7C%20%5BBL%5D
-hysteria2://123456789StrongPass@144.31.224.14:443?security=tls&sni=www.cloudflare.com&allowInsecure=true#%F0%9F%87%B3%F0%9F%87%B1%20The%20Netherlands%2C%20Amsterdam%20%7C%20%5BBL%5D
-hysteria2://123456789StrongPass@144.31.224.14:443/?insecure=1&amp;sni=www.cloudflare.com#%F0%9F%87%B3%F0%9F%87%B1%20The%20Netherlands%2C%20Amsterdam%20%7C%20%5BBL%5D
-hysteria2://123456789StrongPass@144.31.224.14:443/?insecure=1&amp&sni=www.cloudflare.com#%F0%9F%87%B3%F0%9F%87%B1%20The%20Netherlands%2C%20Amsterdam%20%7C%20%5BBL%5D
-hysteria2://tg_8667571693_a1a20eca%3Ad61a16a839811c1d9f949dfa@45.82.245.214:443?alpn=h3&insecure=1&allowInsecure=1&mport=20000-50000#%F0%9F%87%A7%F0%9F%87%B7%20Brazil%2C%20S%C3%A3o%20Paulo%20%7C%20%5BBL%5D
-vless://40600c8a-730a-411c-b72b-c3bca115dcf7@217.16.27.15:7443?encryption=none&type=grpc&security=reality&mode=gun&serviceName=UpdateService&fp=qq&sni=ads.x5.ru&pbk=8hdXyv-YBQIaA2xgOfT2nhfna5y5s19qbZD-SpMZ6hg&sid=dd700a46e27751d1#🇷🇺 Russia | VK 15
+hysteria2://123456789StrongPass@144.31.224.14:443/?insecure=1&amp;sni=www.cloudflare.com#🇳🇱 Нидерланды
+hysteria2://123456789StrongPass@144.31.224.14:443?security=tls&sni=www.cloudflare.com&allowInsecure=true#🇳🇱 Нидерланды
+hysteria2://123456789StrongPass@144.31.224.14:443?upmbps=10&downmbps=50&security=tls&sni=eh.@solidtrust.com&allowInsecure=true#🇳🇱 Нидерланды
+hysteria2://123456789StrongPass@144.31.224.14:443?security=tls&allowInsecure=true#🇳🇱 Нидерланды
+hysteria2://123456789StrongPass@144.31.224.14:443/?insecure=1&sni=www.cloudflare.com#🇳🇱 Нидерланды
+hysteria2://123456789StrongPass@144.31.224.14:443/?insecure=1&amp&sni=www.cloudflare.com#🇳🇱 Нидерланды
+hysteria2://tg_8667571693_a1a20eca%3Ad61a16a839811c1d9f949dfa@45.82.245.214:443?alpn=h3&insecure=1&allowInsecure=1&mport=20000-50000#🇧🇷 Неизвестная страна
