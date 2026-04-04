@@ -13,6 +13,7 @@ import socket
 import sys
 import time
 import urllib.request
+import ipaddress
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -29,7 +30,7 @@ try:
 except ImportError:
     parse_proxy_url = None
 
-GEO_API = "http://ip-api.com/json/{ip}?fields=countryCode"
+GEO_API = "http://ip-api.com/json/{ip}?fields=status,country,countryCode&lang=ru"
 GEO_TIMEOUT = 3
 GEO_DELAY = 0.2  # пауза перед запросом в каждом потоке (лимит ip-api.com ~45/мин без ключа)
 # Потоки: DNS можно поднять до 24-32; geo - не выше 10-12, иначе легко 429 от ip-api
@@ -37,6 +38,41 @@ DNS_MAX_WORKERS = 32
 GEO_MAX_WORKERS = 10
 
 DEFAULT_AUTO_COMMENT = " verified · XRayCheck"
+DEFAULT_COUNTRY_RU = "Неизвестная страна"
+
+COUNTRY_RU_BY_CODE = {
+    "AM": "Армения",
+    "AZ": "Азербайджан",
+    "BY": "Беларусь",
+    "CN": "Китай",
+    "DE": "Германия",
+    "EE": "Эстония",
+    "FI": "Финляндия",
+    "FR": "Франция",
+    "GB": "Великобритания",
+    "GE": "Грузия",
+    "HK": "Гонконг",
+    "IL": "Израиль",
+    "IN": "Индия",
+    "IR": "Иран",
+    "IT": "Италия",
+    "JP": "Япония",
+    "KZ": "Казахстан",
+    "LT": "Литва",
+    "LV": "Латвия",
+    "MD": "Молдова",
+    "NL": "Нидерланды",
+    "PL": "Польша",
+    "RO": "Румыния",
+    "RS": "Сербия",
+    "RU": "Россия",
+    "SE": "Швеция",
+    "SG": "Сингапур",
+    "TR": "Турция",
+    "UA": "Украина",
+    "US": "США",
+    "UZ": "Узбекистан",
+}
 
 # Быстрый режим: не делать DNS/HTTP-запросы, использовать фиксированный или глобальный флаг.
 STRIP_FAST = (os.environ.get("STRIP_VPN_COMMENTS_FAST") or "").strip().lower() in (
@@ -93,20 +129,34 @@ def get_host_from_link(link: str) -> str | None:
     return None
 
 
-def resolve_to_ip(host: str) -> str | None:
-    """Возвращает IP для хоста или None при ошибке."""
+def resolve_to_ips(host: str) -> list[str]:
+    """Возвращает все IPv4 для хоста (в т.ч. если на входе уже IPv4)."""
     if not host:
-        return None
-    if host.replace(".", "").isdigit():
-        return host
+        return []
     try:
-        return socket.gethostbyname(host)
-    except (socket.gaierror, OSError):
-        return None
+        ip_obj = ipaddress.ip_address(host)
+        return [str(ip_obj)] if ip_obj.version == 4 else []
+    except ValueError:
+        pass
+    try:
+        infos = socket.getaddrinfo(host, None, family=socket.AF_INET, type=socket.SOCK_STREAM)
+    except OSError:
+        return []
+    ips: set[str] = set()
+    for info in infos:
+        sockaddr = info[4]
+        if sockaddr and sockaddr[0]:
+            ips.add(sockaddr[0])
+    return sorted(ips)
 
 
-def fetch_country_for_ip(ip: str, cache: dict) -> str:
-    """Получает countryCode для IP через ip-api.com; использует cache."""
+def country_code_to_ru_name(cc: str) -> str:
+    cc = (cc or "").upper()
+    return COUNTRY_RU_BY_CODE.get(cc, DEFAULT_COUNTRY_RU)
+
+
+def fetch_country_for_ip(ip: str, cache: dict) -> tuple[str, str]:
+    """Получает (countryCode, countryNameRu) для IP через ip-api.com; использует cache."""
     if ip in cache:
         return cache[ip]
     time.sleep(GEO_DELAY)
@@ -114,13 +164,51 @@ def fetch_country_for_ip(ip: str, cache: dict) -> str:
         req = urllib.request.Request(GEO_API.format(ip=ip), headers={"User-Agent": "XRayCheck/1.0"})
         with urllib.request.urlopen(req, timeout=GEO_TIMEOUT) as r:
             import json
+
             data = json.loads(r.read().decode())
-            cc = data.get("countryCode") or ""
-            cache[ip] = cc
-            return cc
+            if (data.get("status") or "").lower() != "success":
+                cache[ip] = ("", DEFAULT_COUNTRY_RU)
+                return cache[ip]
+            cc = (data.get("countryCode") or "").upper()
+            country_ru = (data.get("country") or "").strip() or country_code_to_ru_name(cc)
+            cache[ip] = (cc, country_ru)
+            return cache[ip]
     except Exception:
-        cache[ip] = ""
-        return ""
+        cache[ip] = ("", DEFAULT_COUNTRY_RU)
+        return cache[ip]
+
+
+def _load_cidr_networks(cidr_path: str) -> list[ipaddress.IPv4Network]:
+    path = Path(cidr_path)
+    if not path.is_file():
+        return []
+    networks: list[ipaddress.IPv4Network] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        s = raw.strip()
+        if not s or s.startswith("#"):
+            continue
+        try:
+            n = ipaddress.ip_network(s, strict=False)
+        except ValueError:
+            continue
+        if n.version == 4:
+            networks.append(n)
+    return networks
+
+
+def _any_ip_in_cidr(ips: list[str], networks: list[ipaddress.IPv4Network]) -> bool:
+    if not ips or not networks:
+        return False
+    for ip_text in ips:
+        try:
+            ip_obj = ipaddress.ip_address(ip_text)
+        except ValueError:
+            continue
+        if ip_obj.version != 4:
+            continue
+        if any(ip_obj in net for net in networks):
+            return True
+    return False
 
 
 def process_file(
@@ -133,7 +221,8 @@ def process_file(
     if not path.is_file():
         print(f"Error: file not found: {path}", file=sys.stderr)
         return 0
-    out = Path(output_path) if output_path else path.parent / (path.stem + "_new" + path.suffix)
+    # По умолчанию пишем в исходный файл, чтобы изменения были видны сразу.
+    out = Path(output_path) if output_path else path
     lines_in = path.read_text(encoding="utf-8").splitlines()
 
     # Предварительно разбираем строки в чистые ссылки и хосты
@@ -146,23 +235,23 @@ def process_file(
         links.append(link)
         hosts.append(get_host_from_link(link) if add_comment and not STRIP_FAST else None)
 
-    geo_cache: dict[str, str] = {}
-    host_to_ip: dict[str, str] = {}
+    geo_cache: dict[str, tuple[str, str]] = {}
+    host_to_ips: dict[str, list[str]] = {}
+    cidr_networks = _load_cidr_networks(os.environ.get("STRIP_VPN_COMMENTS_CIDR_PATH", "cidrlist"))
 
     if add_comment and not STRIP_FAST:
         # 1) Разрешаем все уникальные хосты в IP параллельно
         unique_hosts = sorted({h for h in hosts if h})
 
         def _resolve_host(h: str) -> None:
-            ip = resolve_to_ip(h) or ""
-            host_to_ip[h] = ip
+            host_to_ips[h] = resolve_to_ips(h)
 
         if unique_hosts:
             with ThreadPoolExecutor(max_workers=min(DNS_MAX_WORKERS, len(unique_hosts))) as executor:
                 list(executor.map(_resolve_host, unique_hosts))
 
         # 2) Для всех уникальных IP получаем countryCode (с кэшем) тоже параллельно
-        unique_ips = sorted({ip for ip in host_to_ip.values() if ip})
+        unique_ips = sorted({ip for ips in host_to_ips.values() for ip in ips if ip})
 
         def _fetch_cc(ip: str) -> None:
             fetch_country_for_ip(ip, geo_cache)
@@ -177,11 +266,20 @@ def process_file(
         if add_comment:
             if STRIP_FAST:
                 cc = STRIP_CC_DEFAULT or ""
+                country_ru = country_code_to_ru_name(cc)
+                is_lte = False
             else:
-                ip = host_to_ip.get(host, "") if host else ""
-                cc = geo_cache.get(ip, "")
+                ips = host_to_ips.get(host, []) if host else []
+                variants = [geo_cache.get(ip, ("", DEFAULT_COUNTRY_RU)) for ip in ips]
+                cc = next((v[0] for v in variants if v[0]), "")
+                country_ru = next((v[1] for v in variants if v[0]), DEFAULT_COUNTRY_RU)
+                is_lte = _any_ip_in_cidr(ips, cidr_networks)
+                if is_lte and not cc:
+                    cc = "RU"
+                    country_ru = country_code_to_ru_name(cc)
             flag = country_code_to_flag(cc)
-            link = f"{link}#{flag} {get_auto_comment().strip()}"
+            lte_suffix = " | LTE" if is_lte else ""
+            link = f"{link}#{flag} {country_ru}{lte_suffix} {get_auto_comment().strip()}"
         result.append(link)
     out.write_text("\n".join(result) + ("\n" if result else ""), encoding="utf-8")
     print(f"Processed: {len(lines_in)} lines -> {len(result)} with new comment. Output: {out}")
@@ -193,7 +291,7 @@ def main():
         description="Strip comments from VPN configs and add: # <flag> verified · XRayCheck"
     )
     parser.add_argument("input", help="Input file (one link per line)")
-    parser.add_argument("-o", "--output", default=None, help="Output file (default: <name>_new.<ext>)")
+    parser.add_argument("-o", "--output", default=None, help="Output file (default: overwrite input file)")
     parser.add_argument("--no-comment", action="store_true", help="Only strip comments, do not add new one")
     args = parser.parse_args()
     n = process_file(args.input, args.output, add_comment=not args.no_comment)
