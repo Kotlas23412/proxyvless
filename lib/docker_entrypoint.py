@@ -50,8 +50,8 @@ def fetch(url: str) -> str:
 
 
 def parse_vless_lines(text: str) -> list[tuple[str, str]]:
-    """Строки с прокси-протоколами: (ссылка, полная_строка). Поддерживает VLESS, VMess, Trojan, Shadowsocks."""
-    supported_protocols = ("vless://", "vmess://", "trojan://", "ss://")
+    """Строки с прокси-протоколами: (ссылка, полная_строка). Поддерживает только VLESS."""
+    supported_protocols = ("vless://",)
     result = []
     for line in text.splitlines():
         line = line.strip()

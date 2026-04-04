@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Модуль парсинга прокси URL (VLESS, VMess, Trojan, Shadowsocks, Hysteria, Hysteria2) и загрузки списков ключей.
+Модуль парсинга прокси URL (VLESS) и загрузки списков ключей.
 """
 
 import base64
@@ -49,7 +49,7 @@ def get_output_path(list_url: str) -> str:
 
 
 # Префиксы протоколов для проверки «уже раскодировано»
-_SUBSCRIPTION_PROTOCOLS = ("vless://", "vmess://", "trojan://", "ss://", "hysteria://", "hysteria2://", "hy2://")
+_SUBSCRIPTION_PROTOCOLS = ("vless://",)
 
 
 def normalize_proxy_link(link: str) -> str:
@@ -236,7 +236,7 @@ def load_urls_from_file(path: str) -> list[str]:
 
 def parse_proxy_lines(text: str) -> list[tuple[str, str]]:
     """Возвращает список (прокси_ссылка, полная_строка) для строк с поддерживаемыми протоколами."""
-    supported_protocols = ("vless://", "vmess://", "trojan://", "ss://", "hysteria://", "hysteria2://", "hy2://")
+    supported_protocols = ("vless://",)
     result = []
     for line in text.splitlines():
         line = line.strip()
@@ -634,7 +634,7 @@ def parse_shadowsocks_url(ss_url: str) -> dict | None:
 def parse_proxy_url(proxy_url: str) -> dict | None:
     """
     Универсальный парсер прокси URL. Определяет протокол и вызывает соответствующий парсер.
-    Поддерживает: VLESS, VMess, Trojan, Shadowsocks, Hysteria, Hysteria2.
+    Поддерживает: VLESS.
     Возвращает словарь для построения конфига xray (или для проверки) или None при ошибке.
     """
     if not proxy_url:
@@ -644,17 +644,7 @@ def parse_proxy_url(proxy_url: str) -> dict | None:
     
     if proxy_url.startswith("vless://"):
         return parse_vless_url(proxy_url)
-    elif proxy_url.startswith("vmess://"):
-        return parse_vmess_url(proxy_url)
-    elif proxy_url.startswith("trojan://"):
-        return parse_trojan_url(proxy_url)
-    elif proxy_url.startswith("ss://"):
-        return parse_shadowsocks_url(proxy_url)
-    elif proxy_url.startswith("hysteria://"):
-        return parse_hysteria_url(proxy_url)
-    elif proxy_url.startswith("hysteria2://") or proxy_url.startswith("hy2://"):
-        return parse_hysteria2_url(proxy_url)
-    
+
     return None
 
 
