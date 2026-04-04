@@ -98,12 +98,7 @@ def strip_comment_from_line(line: str) -> str:
     return line.split("#", 1)[0].strip()
 
 
-def country_code_to_flag(cc: str) -> str:
-    """Двухбуквенный код страны (ISO 3166-1 alpha-2) -> эмодзи флаг (региональные индикаторы)."""
-    if not cc or len(cc) != 2:
-        return "\U0001f310"  # globe
-    a = 0x1F1E6  # regional indicator A
-    return "".join(chr(a + ord(c) - ord("A")) for c in cc.upper() if "A" <= c <= "Z")
+@@ -71,134 +107,195 @@ def country_code_to_flag(cc: str) -> str:
 
 
 def get_host_from_link(link: str) -> str | None:
