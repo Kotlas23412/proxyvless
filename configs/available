@@ -1,7 +1,3 @@
-hysteria2://123456789StrongPass@144.31.224.14:443/?insecure=1&amp;sni=www.cloudflare.com#🇳🇱 Нидерланды
-hysteria2://123456789StrongPass@144.31.224.14:443?security=tls&sni=www.cloudflare.com&allowInsecure=true#🇳🇱 Нидерланды
-hysteria2://123456789StrongPass@144.31.224.14:443?upmbps=10&downmbps=50&security=tls&sni=eh.@solidtrust.com&allowInsecure=true#🇳🇱 Нидерланды
-hysteria2://123456789StrongPass@144.31.224.14:443?security=tls&allowInsecure=true#🇳🇱 Нидерланды
-hysteria2://123456789StrongPass@144.31.224.14:443/?insecure=1&sni=www.cloudflare.com#🇳🇱 Нидерланды
-hysteria2://123456789StrongPass@144.31.224.14:443/?insecure=1&amp&sni=www.cloudflare.com#🇳🇱 Нидерланды
-hysteria2://tg_8667571693_a1a20eca%3Ad61a16a839811c1d9f949dfa@45.82.245.214:443?alpn=h3&insecure=1&allowInsecure=1&mport=20000-50000#🇧🇷 Неизвестная страна
+vless://cad6daf7-6cf8-4e1b-b0d5-aa0bea400d2a@ru-bridge.monkeyisland.xyz:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&pbk=2AKBmK0PMf2zUMhRo1Ad-WNf_XoRk3AN-SGo6ZdhxA4&sid=f66c289040d589ee&sni=ru-bridge.monkeyisland.xyz&path=&host=#🇷🇺 Россия
+vless://5ba4a74c-85c4-4df6-9f04-724ade1df544@de.aeza.alexanderoff.ru:1010?type=grpc&security=none&mode=gun&serviceName=vless&authority=#🇩🇪 Германия
+vless://52c3e040-f7a4-4f69-86a4-13019fde4584@5.42.105.126:443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=&pbk=2fgsbEAn-ALVpjnE4ZTPrzaZY70vVplYwldCnslInE0&sid=86b80f1e713a33ad&sni=eh.vk.com&path=&host=#🇷🇺 Россия
